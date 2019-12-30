@@ -46,6 +46,55 @@ parser.performAction = function anonymous(yytext,yyleng,yylineno,yy,yystate,$$,_
     return ret;
 };
 
+// Array.prototype.includes polyfill (ECMAScript 7)
+// https://tc39.github.io/ecma262/#sec-array.prototype.includes
+if (!Array.prototype.includes) {
+  Object.defineProperty(Array.prototype, 'includes', {
+    value: function(searchElement, fromIndex) {
+
+      // 1. Let O be ? ToObject(this value).
+      if (this === null) {
+        throw new TypeError('"this" is null or not defined');
+      }
+
+      var o = Object(this);
+
+      // 2. Let len be ? ToLength(? Get(O, "length")).
+      var len = o.length >>> 0;
+
+      // 3. If len is 0, return false.
+      if (len === 0) {
+        return false;
+      }
+
+      // 4. Let n be ? ToInteger(fromIndex).
+      //    (If fromIndex is undefined, this step produces the value 0.)
+      var n = fromIndex | 0;
+
+      // 5. If n ≥ 0, then
+      //  a. Let k be n.
+      // 6. Else n < 0,
+      //  a. Let k be len + n.
+      //  b. If k < 0, let k be 0.
+      var k = Math.max(n >= 0 ? n : len - Math.abs(n), 0);
+
+      // 7. Repeat, while k < len
+      while (k < len) {
+        // a. Let elementK be the result of ? Get(O, ! ToString(k)).
+        // b. If SameValueZero(searchElement, elementK) is true, return true.
+        // c. Increase k by 1.
+        // NOTE: === provides the correct "SameValueZero" comparison needed here.
+        if (o[k] === searchElement) {
+          return true;
+        }
+        k++;
+      }
+
+      // 8. Return false
+      return false;
+    }
+  });
+}
 
 /*
  Class namespace
@@ -141,7 +190,17 @@ Namespace.prototype.sortVarNames = function () {
     // now sorts on variable NAME. Should identify stock variables in AST.
 
     // names of "special"variable names to sort, sort if found in order given
-    var nameList = ['t', 's', 'x', 'y', 'h', 'v', 'vx', 'vy'];
+    var nameList;
+    if (this.varNames.includes('y') & this.varNames.includes('x')) {
+      // try to plot y,x diagram
+      nameList = ['x', 'y', 't', 's', 'h', 'u', 'v', 'vx', 'vy'];
+    } else if (this.varNames.includes('h') & this.varNames.includes('x')) {
+      // try to plot h,x diagram
+      nameList = ['x', 'h', 't', 's', 'y', 'v', 'vx', 'vy'];
+    } else {
+      // try to plot s,t or x,t diagram
+      nameList = ['t', 's', 'x', 'y', 'h', 'u', 'v', 'vx', 'vy'];
+    }
     var nextVariableIndex = 0 ; // place to swap next "special"variable with
 
     /*  nextVariableIndex = 0
@@ -281,10 +340,8 @@ CodeGenerator.prototype.parseNode = function(node) {
                 }
         case 'Number':
                 return parseFloat(node.value.replace(',','.'));
-        case 'True':
-                return 'true';
-        case 'False':
-                return 'false';
+        case 'Boolean':
+                return node.value;
         case 'Stop':
                 return 'bailout=true;\nbreak;';
         case 'Blank': {
@@ -574,7 +631,7 @@ Model.prototype.parseBogusXMLString = function(xmlString) {
           if (matches !== null) {
             if (matches[1] == 'N')
               this.N = parseInt(matches[2], 10);
-              console.log('Found N = '+this.N+' in model.xml');
+              if (this.debug) console.log('Found N = '+this.N+' in model.xml');
           }
         }
         switch(lines[line].replace('\r','')) {
@@ -614,17 +671,15 @@ var FileSaver = require('file-saver');
 // this also depends on:
 // jQuery
 // jQuery.Flot
-// JQueyr.axislabels
 // These libs are not included, because the Flot libray does not play well
 // with browserify.
 // Include this in the HTML with:
 //<script src="scripts/jquery-3.2.1.min.js"></script>
 //<script src="scripts/jquery.flot.js"></script>
-//<script src="scripts/jquery.flot.axislabels.js"></script>
 
 
 //jshint devel:true
-//jshint es3:true
+//jshint es5:true
 //jshint loopfunc: true
 
 /* version history
@@ -632,17 +687,40 @@ v4.4.0 (13sep19) Add read N=1000 from XML. Add error msg for ... "Vul hier iets 
 v4.4.1 (15sep19) Accept ... and unicode symbol '...' as BLANK (Vul hier in error)
 v4.5 (28sep19) Bugfix: fix double alert 'cannot read property of undefined' on parse error
      accepteer unicode squared/cubed F=k*v²
+v5.0 dev (WIP)
+    ENH: Meerdere plots tegelijkertijd in een grafiek
+    ENH: Klik op y-as for autoscale aan/uit (plot y-as vanaf nul)
+    ENH: (app) layout, bestanden menu
+    ENH: (app) update_modeljs.py script
+    ENH: PGFPlots: verbeterde plots
+    ENH: 'EN' en 'OF' logische operatoren
+    Fix: boolean variablen in output (tabel)
+    Fix: "BLANK" geeft nu ook "vul iets in bij de puntjes" als de regel alleen "..." bevat
 */
-var version = "v4.5 - 28sep2019";
+var version = "v5.0 dev";
 
 
 function ModelleertaalApp(params) {
 
   this.debug = params.debug || false;
+  this.version = version;
   console.log('Modelleertaal App. ' + version + '. Debug = ' + this.debug);
+
+  this.model_index = params.model_index || false;
+  console.log('Model_index: ', this.model_index);
+
+  this.base_url = params.base_url || '';
+  this.rel_url = params.rel_url || 'index.html';
+
+  if (this.debug) {
+    console.log('base_url: ', base_url);
+    console.log('rel_url:' , rel_url);
+  }
 
   this.CodeMirror = params.CodeMirror || true;
   this.CodeMirrorActive = false;
+
+  this.yaxis_autoscale = true;
 
   this.dom_modelregels = "#modelregels";
   this.dom_startwaarden = "#startwaarden";
@@ -663,10 +741,12 @@ function ModelleertaalApp(params) {
   this.dom_download_tsv = "#download_tsv";
   this.dom_download_tsv_fn = "#tsv_filename";
   this.dom_clickdata = "#clickdata";
-  this.dom_hoverdata = "#hoverdata";
   this.dom_x_var = "#x_var";
   this.dom_y_var = "#y_var";
+  this.dom_select_graph = "#select_graph";
   this.dom_model_keuze = "#model_keuze";
+  this.dom_permalink = "#permaklink";
+  this.dom_legend = "#legend";
 
   this.read_model();
 
@@ -688,6 +768,7 @@ function ModelleertaalApp(params) {
 
   // (re)set the app
   this.init_app();
+  this.load_model();
 
   this.max_rows_in_plot = 100;
 
@@ -708,14 +789,19 @@ function ModelleertaalApp(params) {
     self.trace();
   });
 
-
   $(this.dom_plot).click(function() {
     if (self.results.length === 0) {
-        alert('Geen resultaten. Druk eerst op Run!');
-    } else {
-        self.do_plot();
+        console.log('Plot clicked. No results --> Run first');
+        self.N = Number($(self.dom_nbox).val());
+        self.run();
     }
+    self.do_plot();
+
     //self.print_status("Plot OK.");
+  });
+
+  $(this.dom_model_keuze).change(function () {
+    self.dropdown_load_model();
   });
 
   $(this.dom_download_xml).click(function() {
@@ -731,13 +817,115 @@ function ModelleertaalApp(params) {
   $(this.dom_fileinput).change(function(event) {
     self.read_file(event);
   });
+
+  this.multiplot = false;
+  $("#multiplot").click(function() {
+      self.multiplot = !self.multiplot;
+      self.set_graph_menu();
+  });
+
 }
+
+ModelleertaalApp.prototype.load_model = function() {
+    // called from $(document).ready();
+
+    // listen to URL index.html#model=model_naam&N=100 type URL
+    // https://stackoverflow.com/a/44169739/4965175
+    var hash = window.location.hash.substr(1);
+    var url_params = hash.split('&').reduce(function(result, item) {
+        var parts = item.split('=');
+        result[parts[0]] = parts[1];
+        return result;
+    }, {});
+    console.log("params passed in URL", url_params);
+
+    var N_preset = url_params.N || N_default || false;
+    if (N_preset) {
+        $("#NBox").val(N_preset);
+    }
+
+    this.dropdown_update();
+    var model_preselected = url_params.model || false;
+    if (model_preselected) {
+        // try to load model passed with model=... parameter
+        var model_url = 'modellen/' + model_preselected + '.xml';
+        this.load_model_xml_from_url(model_url);
+        var reverse_dropdown_val = model_index.findIndex(function(element) {
+            return element.url == model_url;
+        });
+        // set dropdown to selected model
+        $(this.dom_model_keuze).val(reverse_dropdown_val);
+    } else {
+        // lees keuze uit drop-down en kies juiste url
+        this.dropdown_load_model();
+    }
+};
+
+
 
 
 ModelleertaalApp.prototype.print_status = function(status, error) {
   $(this.dom_status).html(status);
   if (typeof error != "undefined") $(this.dom_graph).html(error).css("font-family", "monospace");
 };
+
+
+ModelleertaalApp.prototype.load_model_xml_from_url = function(url) {
+    var self = this;
+    $.ajax({
+        url: url,
+        dataType: "text",
+        success: function(data) {
+            self.read_model_from_xml(data);
+            self.init_app();
+        }, // succes();
+        error: function(xhr, ajaxOptions, thrownError) {
+            if (xhr.status === 0) {
+                alert("Kan model " + url + " niet laden.\nBestaat het model?\nOffline? Zet CORS protection uit");
+            } else {
+                alert(thrownError);
+            }
+            $(self.dom_graph).html("Model niet geladen! FOUT.");
+            self.print_status("Status: ERROR.");
+        } // error();
+    }); //.ajax
+};
+
+
+ModelleertaalApp.prototype.dropdown_update = function() {
+    // maak het drop-down modelkeuze menu uit model.js
+    $(this.dom_model_keuze).empty();
+    for (var i = 0; i < this.model_index.length; i++) {
+        $('<option/>').val(i).text(this.model_index[i].title).appendTo(this.dom_model_keuze);
+    }
+};
+
+
+ModelleertaalApp.prototype.dropdown_load_model = function() {
+
+    //var model_keuze = $("#model_keuze").val();
+    var model_keuze = $(this.dom_model_keuze).val();
+
+    url = this.model_index[model_keuze].url;
+    var myRe = /\/([^.]+)/g;
+
+    var rel_link = this.rel_url + 'index.html#model=' + myRe.exec(url)[1];
+    var permalink = this.base_url + rel_link;
+
+    // verander de URL onder de knop "link"
+    $(this.dom_permalink).attr('href', permalink);
+
+    // verander de URL in de browser (history)
+    if (history.replaceState) {
+        window.history.replaceState("", "Modelleertaal webapp", rel_link);
+    } else {
+        document.location.href = rel_link;
+    }
+
+    this.load_model_xml_from_url(url);
+};
+
+
 
 
 ModelleertaalApp.prototype.read_model = function() {
@@ -934,7 +1122,6 @@ ModelleertaalApp.prototype.after_run = function() {
 };
 
 
-
 ModelleertaalApp.prototype.save_axis = function() {
   // save chosen variable, try to plot same graph
   this.xvar_last = $(this.dom_x_var).find(":selected").text();
@@ -943,6 +1130,10 @@ ModelleertaalApp.prototype.save_axis = function() {
 
 
 ModelleertaalApp.prototype.reset_axis_dropdown = function() {
+
+  if (!this.results_available()) {
+    return;
+  }
 
   // (re)set varNames in drop-down select fields
   $(this.dom_x_var).empty();
@@ -997,14 +1188,26 @@ ModelleertaalApp.prototype.table_row = function(rowIndex) {
 
     function fix(x) {
       if (isNaN(x)) return "X";
-        if (Math.abs(x) < 0.0001) return 0;
+      if (Math.abs(x) < 0.0001) return 0;
       return x;
     }
 
     var row = $('<tr>');
     row.append($('<td>').text(rowIndex));
+
+    var res;
     for (var j = 0; j < this.results[rowIndex].length; j++) {
-      row.append($('<td>').text(fix(this.results[rowIndex][j].toPrecision(4))));
+      res = this.results[rowIndex][j];
+      if (typeof(res) === 'number') {
+          res = fix(res.toPrecision(4));
+      } else {  // -- boolean
+          if (res) {
+            res = 'Waar';
+          } else {
+            res = 'Onwaar';
+          }
+      }
+      row.append($('<td>').text(res));
     }
     return row;
 };
@@ -1049,37 +1252,159 @@ ModelleertaalApp.prototype.print_table = function(limit) {
 //
 ModelleertaalApp.prototype.do_plot = function() {
 
-  if (this.results.length === 0) {
+  if (!this.results_available()) {
     //alert('Geen resultaten. Druk eerst op Run!');
-    console.log('No results! cannot plot');
+    console.error('No results! cannot plot');
     return false;
   }
-  this.scatter_plot = [];
+
+  if (this.multiplot) {
+    this.do_multi_plot();
+    return;
+  }
 
   // if set to "auto" set axis to default settings (x,t)
   this.set_axis_to_defaults();
+  // show "meerdere grafieken button"
+  this.toggle_plot_mode();
 
   var results = this.reduce_rows(this.results, this.max_rows_in_plot);
 
+  var current_plot = {
+      data: [],
+      color: 'blue',
+      label: this.allVars[yvar_colidx]
+    };
+  var previous_plot = {
+      data: this.previous_plot,
+      color: '#d3d3d3',
+      label: ''
+  };
+
   for (var i = 0; i < results.length; i++) {
-    this.scatter_plot.push([results[i][xvar_colidx], results[i][yvar_colidx]]);
+    current_plot.data.push([results[i][xvar_colidx], results[i][yvar_colidx]]);
   }
+  // FIXME: left over from (very!) old code...
+  this.scatter_plot = current_plot.data;
+
+  var dataset = [];
+  dataset.push(previous_plot);
+  dataset.push(current_plot);
 
   $(this.dom_graph).empty(); // verwijder text enzo
   $(this.dom_clickdata).empty();
-  this.plot_graph(this.scatter_plot, this.previous_plot);
+  this.plot_graph(dataset);
   this.previous_plot = this.scatter_plot;
 }; // do_plot
 
 
+ModelleertaalApp.prototype.results_available = function() {
+  if (this.results.length === 0) {
+    return false;
+  }
+  return true;
+}; // results_available
+
+
+ModelleertaalApp.prototype.toggle_plot_mode = function() {
+
+  if (!this.results_available()) {
+    $("#multiplot").empty();
+    $("#multiplot").removeClass("multiplot");
+    return;
+  }
+
+  var msg = "";
+  if (this.multiplot) {
+     msg = 'Terug naar enkele grafiek';
+  } else {
+     msg = 'Plot meerdere grafieken';
+  }
+
+  $("#multiplot").html(msg).addClass("multiplot");
+
+}; // set_plot.mode
+
+ModelleertaalApp.prototype.set_graph_menu = function() {
+  var self = this;
+
+  if (this.multiplot) {
+    // build multi variable checkboxes for y-var
+    $(this.dom_select_graph).empty();
+
+    for (var i = 0; i < this.allVars.length; i++) {
+      var checked_y = (i == yvar_colidx) ? true : false;
+      var checked_x = (i == xvar_colidx) ? true : false;
+      $(this.dom_select_graph).append($("<input>").attr("type", "checkbox")
+            .attr("checked", checked_y).attr("idx_yvar", i)
+            .attr("id", "id_" + this.allVars[i]));
+      $(this.dom_select_graph).append($("<label>").text(this.allVars[i]));
+      $(this.dom_select_graph).append($('<br>'));
+    }
+    $(this.dom_select_graph).find("input:checkbox").click(function () {
+      // toglle autoscale on/off and replot!
+      self.do_plot();
+    });
+  } else {
+    // reset single dropdown menu for y-var.
+    $(this.dom_select_graph).empty();
+    $(this.dom_select_graph).append($("<select>").attr("id", "y_var"));
+    $(this.dom_legend).empty();
+    this.reset_axis_dropdown();
+  }
+  this.toggle_plot_mode();
+
+}; // create_graph_checkboxes
+
+
+ModelleertaalApp.prototype.do_multi_plot = function() {
+
+  var self = this;
+  var graph_colors = ['blue', '#E8743B', '#19A979', '#ED4A7B', '#945ECF','#13A4B4'];
+
+  // FIXME cache this!!!
+  var results = this.reduce_rows(this.results, this.max_rows_in_plot);
+  var dataset = [];
+
+  // x-var
+  xvar_colidx = parseInt($(this.dom_x_var).val());
+  xvar_colidx = (!isNaN(xvar_colidx)) ? xvar_colidx : 0;
+  $(this.dom_x_var).val(xvar_colidx);
+
+  var n = 0;
+  // y-vars
+  $("#select_graph").find("input:checked").each(function () {
+    var ycol_idx = $(this).attr("idx_yvar");
+    ycol_idx = parseInt(ycol_idx);
+    if (isNaN(ycol_idx)) return ;
+    var plot = {
+        data: []
+      };
+
+    for (var i = 0; i < results.length; i++) {
+      // FIXME xvar_colidx scope!!!!
+      plot.data.push([results[i][xvar_colidx], results[i][ycol_idx]]);
+    }
+    plot.color = graph_colors[n];
+    plot.label = self.allVars[ycol_idx];
+    n += 1;
+    dataset.push(plot);
+	});
+  $(this.dom_graph).empty(); // verwijder text enzo
+  $(this.dom_clickdata).empty();
+  this.plot_graph(dataset);
+
+}; // do_multi_plot
+
+
 ModelleertaalApp.prototype.set_axis_to_defaults = function() {
   // get column indices (in results array) of variables to plot
-  xvar_colidx = $(this.dom_x_var).val();
-  yvar_colidx = $(this.dom_y_var).val();
+  xvar_colidx = parseInt($(this.dom_x_var).val());
+  yvar_colidx = parseInt($(this.dom_y_var).val());
 
   // if undefined -> x first column, y second column of results
-  xvar_colidx = (xvar_colidx) ? xvar_colidx : 0;
-  yvar_colidx = (yvar_colidx) ? yvar_colidx : 1;
+  xvar_colidx = (!isNaN(xvar_colidx)) ? xvar_colidx : 0;
+  yvar_colidx = (!isNaN(yvar_colidx)) ? yvar_colidx : 1;
 
   // set column varnames in input fields
   $(this.dom_x_var).val(xvar_colidx);
@@ -1087,21 +1412,71 @@ ModelleertaalApp.prototype.set_axis_to_defaults = function() {
 };
 
 
-ModelleertaalApp.prototype.plot_graph = function(dataset, previous_plot) {
+ModelleertaalApp.prototype.plot_graph = function(dataset) {
 
   var self = this;
+  var plot_yaxis_min;
+
+  var x_var_name = this.allVars[$(this.dom_x_var).val()];
+  var y_var_name = this.allVars[$(this.dom_y_var).val()];
+
+  // FIXME: Dit kan VEEL makkelijker en LEESBAARDER!
+  function find_datasets_min_below_zero(ds) {
+      var min = 0;
+      var len_ds = ds.length;
+      var val, i;
+  	  for (i = 0; i < len_ds; i++ ) {
+          val = find_dataset_min(ds[i]);
+          if ( val < min ) {
+  			       min = val;
+  	          }
+	    }
+	    return min;
+  }
+
+  function find_dataset_min(d) {
+      var min = Infinity;
+      var len = d.data.length;
+      var val;
+
+  	  for ( var i = 0; i < len; i++ ) {
+          val = d.data[i][1];
+          if ( val < min ) {
+  			       min = val;
+  	          }
+	    }
+	    return min;
+  }
+
+  if (self.yaxis_autoscale) {
+    plot_yaxis_min = undefined;  // use autoscale for y-axis
+  } else {
+    // plot the y-axis from min(0, minimum of dataset)
+    // FIXME: Does not work for multiple datasets!!!!
+    plot_yaxis_min = find_datasets_min_below_zero(dataset);
+  }
 
   $(this.dom_graph).css("font-family", "sans-serif");
 
-  $.plot($(this.dom_graph), [{
-      data: previous_plot,
-      color: '#d3d3d3'
-    },
-    {
-      data: dataset,
-      color: 'blue'
-    }
-  ], {
+  function sciFormatter(val, axis) {
+    // format large numbers in scientific notation: 1e6
+    // probably *much* (much!) slower than the default tickformatter
+    if (Math.abs(val) > 9e4)
+        return val.toExponential(1);
+    else
+        return val.toFixed(axis.tickDecimals);
+  }
+  var legendContainer = document.getElementById("legend");
+
+  var axis_font = {
+    size: 12,
+    lineHeight: 13,
+    family: "sans-serif",
+    variant: "small-caps",
+    color: "#545454"
+  };
+
+  var plot_object = $.plot($(this.dom_graph), dataset, {
     series: {
       lines: {
         show: true
@@ -1119,23 +1494,33 @@ ModelleertaalApp.prototype.plot_graph = function(dataset, previous_plot) {
     axisLabels: {
       show: true
     },
-    xaxes: [{
-      axisLabel: this.allVars[$(this.dom_x_var).val()]
-    }],
-    yaxes: [{
+    xaxis: {
+      font: axis_font,
+      showTicks: false,
+      tickFormatter: sciFormatter,
+      axisLabel: x_var_name
+    },
+    yaxis: {
+      font: axis_font,
+      showTicks: false,
       position: 'left',
-      axisLabel: this.allVars[$(this.dom_y_var).val()]
-    }]
+      tickFormatter: sciFormatter,
+      min: plot_yaxis_min,
+      axisLabel: y_var_name
+    },
+    legend: {
+      show: (this.multiplot) ? true : null,
+      container: legendContainer,
+    },
+    tooltip: {
+      show: true,
+      content: "%lx: %x.2, %s: %y.2"
+    }
   }); // $.plot()
 
-  $(this.dom_graph).bind("plothover", function(event, pos, item) {
-    var str = "(" + pos.x.toFixed(2) + ", " + pos.y.toFixed(2) + ")";
-    $(self.dom_hoverdata).text(str);
-  }); // $.bind("plothover")
-
   $(this.dom_graph).bind("plotclick", function(event, pos, item) {
-    if (item.seriesIndex == 1) {
-     // clicked on currect graph
+    if ((self.multiplot) || (item.seriesIndex == 1)) {
+     // multiplot: click on all lines, single plot: do not allow click on previous plot
      var table = $('<table>').addClass('table');
      table.append(self.table_header());
      table.append(self.table_row(self.get_result_rowIndex(item.dataIndex)));
@@ -1143,6 +1528,28 @@ ModelleertaalApp.prototype.plot_graph = function(dataset, previous_plot) {
     }
   }); // $bind.("plotclick")
 
+  // create clickable y-axis that toggles autoscale
+  var axes = plot_object.getAxes();
+  var axis = axes.yaxis;
+  var box = axis.box;
+  $("<div id='plot_yaxis' class='axisTarget' style='position:absolute; left:" + box.left + "px; top:" + box.top + "px; width:" + box.width +  "px; height:" + box.height + "px'></div>")
+				.data("axis.direction", axis.direction)
+				.data("axis.n", axis.n)
+				.css({ backgroundColor: "#f00", opacity: 0, cursor: "pointer" })
+				.appendTo(plot_object.getPlaceholder())
+				.hover(
+					function () { $(this).css({ opacity: 0.10 }); },
+					function () { $(this).css({ opacity: 0 }); }
+				)
+				.click(function () {
+          // toglle autoscale on/off and replot!
+          self.yaxis_autoscale = !self.yaxis_autoscale;
+          self.do_plot();
+        });
+
+  $("#plot_yaxis").hover(function() {
+        $(this).css('cursor','pointer').attr('title', 'Klik op de as om de schaal te wijzigen (autoscale aan/uit).');
+    });
 }; // plot_graph()
 
 ModelleertaalApp.prototype.set_max_rows_in_plot = function(max_rows) {
@@ -1167,17 +1574,22 @@ ModelleertaalApp.prototype.init_app = function() {
     $(this.dom_startwaarden).val(this.model.startwaarden);
   }
   if (this.model.N) $(this.dom_nbox).val(this.model.N);
+
+  this.results = [];
+  this.scatter_plot = [];
+  this.previous_plot = [];
+  this.has_run = false;
+  this.tracing = false;
+
+  // (re)set graph menu
+  this.multiplot = false;
+  this.set_graph_menu();
   $(this.dom_y_var).empty();
   $(this.dom_x_var).empty();
   $('<option/>').val('').text('auto').appendTo(this.dom_x_var);
   $('<option/>').val('').text('auto').appendTo(this.dom_y_var);
   this.print_status("Status: Model geladen.", "Model geladen. Geen data. Druk op Run!");
   $(this.dom_datatable).empty();
-  this.results = [];
-  this.scatter_plot = [];
-  this.previous_plot = [];
-  this.has_run = false;
-  this.tracing = false;
 
 };
 
@@ -1232,7 +1644,7 @@ ModelleertaalApp.prototype.create_pgfplot_header = function() {
 		}
 
 		function get_units_by_variable_name(var_name) {
-			var units = {"x": "\\meter", "y": "\\meter", "h": "\\meter",
+			var units = {"x": "\\meter", "y": "\\meter", "h": "\\meter", "u": "\\meter",
 								"s": "\\meter", "t": "\\second",
 							 "v": "\\meter\\per\\second",
 							 "a": "\\meter\\per\\second",
@@ -1263,8 +1675,9 @@ ModelleertaalApp.prototype.create_pgfplot_header = function() {
 		return "%x and y scale set to 10cmx10cm grid. Adjust to fit!\n" +
 		 "% x = ["+x_min+" .. "+arrayMax(x)+"]\n"+
 		 "% y = ["+y_min+" .. "+arrayMax(y)+"]\n"+
-		 "% this only works for graphs starting a (0,0)\n"+
+		 "% this only works for graphs starting at (0,0)\n"+
 		 "\\begin{axis}[x=1cm\/"+x_scale+", y=1cm\/"+y_scale+",\n"+
+     "axis y line=left, axis x line=middle,\n"+
 		 "enlargelimits=false, tick align=outside,\n "+
 		 "xlabel={$"+x_var+"$ [\\si{"+x_unit+"}]},\n"+
 		 "ylabel={$"+y_var+"$ [\\si{"+y_unit+"}]},\n"+
@@ -1277,8 +1690,13 @@ ModelleertaalApp.prototype.create_pgfplot_header = function() {
 ModelleertaalApp.prototype.create_pgfplot = function() {
 		// Output PGFPlots plot
 
-    if (this.results.length === 0) {
+    if (!this.results_available()) {
       alert('Geen resultaten. Druk eerst op Run!');
+      return false;
+    }
+
+    if (this.multiplot) {
+      alert('Not Implemented! Dit werkt alleen met enkele grafiek');
       return false;
     }
 
@@ -1298,12 +1716,13 @@ ModelleertaalApp.prototype.create_pgfplot = function() {
 
 		PGFPlot_TeX = "% Use \\input{} to wrap this inside suitable LaTeX doc:\n";
 		PGFPlot_TeX += "\\begin{tikzpicture}\n" +
+       "\pgfplotsset{/pgf/number format/use comma}\n" +
 			 "% draw 10x10cm millimeter paper.\n" +
 			 "\\def\\width{10}\n" +
 	     "\\def\\height{10}\n" +
-	     "\\draw[step=1mm, line width=0.2mm, black!20!white] (0,0) grid (\\width,\\height);\n"+
-	     "\\draw[step=5mm, line width=0.2mm, black!40!white] (0,0) grid (\\width,\\height);\n"+
-	     "\\draw[step=1cm, line width=0.2mm, black!60!white] (0,0) grid (\\width,\\height);\n";
+	     "\\draw[step=1mm, line width=0.2mm, blue!20!white] (0,0) grid (\\width,\\height);\n"+
+	     "\\draw[step=5mm, line width=0.2mm, blue!40!white] (0,0) grid (\\width,\\height);\n"+
+	     "\\draw[step=1cm, line width=0.2mm, blue!60!white] (0,0) grid (\\width,\\height);\n";
 		PGFPlot_TeX += "%\n%\n%\n";
 
 		PGFPlot_TeX += this.create_pgfplot_header();
@@ -1486,12 +1905,12 @@ exports.ModelleertaalApp = ModelleertaalApp;
   }
 */
 var parser = (function(){
-var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[1,4],$V1=[1,5],$V2=[1,6],$V3=[5,7,10,13,14,15],$V4=[1,22],$V5=[1,16],$V6=[1,14],$V7=[1,13],$V8=[1,15],$V9=[1,17],$Va=[1,18],$Vb=[1,19],$Vc=[1,20],$Vd=[1,21],$Ve=[1,25],$Vf=[1,26],$Vg=[1,27],$Vh=[1,28],$Vi=[1,29],$Vj=[1,30],$Vk=[1,31],$Vl=[1,32],$Vm=[1,33],$Vn=[1,34],$Vo=[1,35],$Vp=[1,36],$Vq=[5,7,10,12,13,14,15,18,19,20,21,22,23,24,25,26,27,28,29,30],$Vr=[5,7,10,12,13,14,15,18,27,28],$Vs=[5,7,10,12,13,14,15,18,24,25,26,27,28,29,30],$Vt=[5,7,10,12,13,14,15,18,27,28,29,30];
+var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[1,4],$V1=[1,5],$V2=[1,6],$V3=[1,7],$V4=[5,7,10,13,14,15,16],$V5=[1,23],$V6=[1,20],$V7=[1,17],$V8=[1,15],$V9=[1,14],$Va=[1,16],$Vb=[1,18],$Vc=[1,19],$Vd=[1,21],$Ve=[1,22],$Vf=[1,26],$Vg=[1,27],$Vh=[1,28],$Vi=[1,29],$Vj=[1,30],$Vk=[1,31],$Vl=[1,32],$Vm=[1,33],$Vn=[1,34],$Vo=[1,35],$Vp=[1,36],$Vq=[1,37],$Vr=[1,38],$Vs=[1,39],$Vt=[5,7,10,12,13,14,15,16,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33],$Vu=[5,7,10,12,13,14,15,16,19,30,31],$Vv=[5,7,10,12,13,14,15,16,19,25,26,27,28,29,30,31,32,33],$Vw=[5,7,10,12,13,14,15,16,19,30,31,32,33];
 var parser = {trace: function trace() { },
 yy: {},
-symbols_: {"error":2,"program":3,"stmt_list":4,"EOF":5,"stmt":6,"IDENT":7,"ASSIGN":8,"expr":9,"IF":10,"condition":11,"THEN":12,"ENDIF":13,"ELSE":14,"STOP":15,"direct_declarator":16,"(":17,")":18,"==":19,">":20,">=":21,"<":22,"<=":23,"SQUARED":24,"CUBED":25,"^":26,"+":27,"-":28,"*":29,"/":30,"NOT":31,"NUMBER":32,"PI":33,"BLANK":34,"TRUE":35,"FALSE":36,"$accept":0,"$end":1},
-terminals_: {2:"error",5:"EOF",7:"IDENT",8:"ASSIGN",10:"IF",12:"THEN",13:"ENDIF",14:"ELSE",15:"STOP",17:"(",18:")",19:"==",20:">",21:">=",22:"<",23:"<=",24:"SQUARED",25:"CUBED",26:"^",27:"+",28:"-",29:"*",30:"/",31:"NOT",32:"NUMBER",33:"PI",34:"BLANK",35:"TRUE",36:"FALSE"},
-productions_: [0,[3,2],[4,1],[4,2],[6,3],[6,5],[6,7],[6,1],[11,1],[16,1],[16,4],[9,1],[9,3],[9,3],[9,3],[9,3],[9,3],[9,2],[9,2],[9,3],[9,3],[9,3],[9,3],[9,3],[9,2],[9,2],[9,2],[9,3],[9,1],[9,1],[9,1],[9,1],[9,1]],
+symbols_: {"error":2,"program":3,"stmt_list":4,"EOF":5,"stmt":6,"IDENT":7,"ASSIGN":8,"expr":9,"IF":10,"condition":11,"THEN":12,"ENDIF":13,"ELSE":14,"STOP":15,"BLANK":16,"direct_declarator":17,"(":18,")":19,"==":20,">":21,">=":22,"<":23,"<=":24,"||":25,"&&":26,"SQUARED":27,"CUBED":28,"^":29,"+":30,"-":31,"*":32,"/":33,"NOT":34,"NUMBER":35,"PI":36,"TRUE":37,"FALSE":38,"$accept":0,"$end":1},
+terminals_: {2:"error",5:"EOF",7:"IDENT",8:"ASSIGN",10:"IF",12:"THEN",13:"ENDIF",14:"ELSE",15:"STOP",16:"BLANK",18:"(",19:")",20:"==",21:">",22:">=",23:"<",24:"<=",25:"||",26:"&&",27:"SQUARED",28:"CUBED",29:"^",30:"+",31:"-",32:"*",33:"/",34:"NOT",35:"NUMBER",36:"PI",37:"TRUE",38:"FALSE"},
+productions_: [0,[3,2],[4,1],[4,2],[6,3],[6,5],[6,7],[6,1],[6,1],[11,1],[17,1],[17,4],[9,1],[9,3],[9,3],[9,3],[9,3],[9,3],[9,3],[9,3],[9,2],[9,2],[9,3],[9,3],[9,3],[9,3],[9,3],[9,2],[9,2],[9,2],[9,3],[9,1],[9,1],[9,1],[9,1],[9,1]],
 performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* action[1] */, $$ /* vstack */, _$ /* lstack */) {
 /* this == yyval */
 
@@ -1537,19 +1956,26 @@ this.$ = {
                  type: 'Stop',
                  value: $$[$0]
             };
-        
+      
 break;
-case 8: case 11:
+case 8:
+this.$ = {
+                type: 'Blank',
+                value: $$[$0]
+           };
+      
+break;
+case 9: case 12:
 this.$ = $$[$0];
 break;
-case 9:
+case 10:
  this.$ = {
                   type: 'Variable',
                   name: yytext
               };
           
 break;
-case 10:
+case 11:
 this.$ = {
               type: 'Function',
               func: $$[$0-3],
@@ -1557,7 +1983,7 @@ this.$ = {
       };
   
 break;
-case 12:
+case 13:
 this.$ = {
                type: 'Logical',
                operator: '==',
@@ -1566,7 +1992,7 @@ this.$ = {
        };
    
 break;
-case 13:
+case 14:
 this.$ = {
               type: 'Logical',
               operator: '>',
@@ -1575,7 +2001,7 @@ this.$ = {
       };
   
 break;
-case 14:
+case 15:
 this.$ = {
                 type: 'Logical',
                 operator: '>=',
@@ -1584,7 +2010,7 @@ this.$ = {
         };
     
 break;
-case 15:
+case 16:
 this.$ = {
                type: 'Logical',
                operator: '<',
@@ -1593,7 +2019,7 @@ this.$ = {
        };
    
 break;
-case 16:
+case 17:
 this.$ = {
                   type: 'Logical',
                   operator: '<=',
@@ -1602,7 +2028,25 @@ this.$ = {
           };
       
 break;
-case 17:
+case 18:
+this.$ = {
+                  type: 'Logical',
+                  operator: '||',
+                  left: $$[$0-2],
+                  right: $$[$0]
+          };
+      
+break;
+case 19:
+this.$ = {
+                  type: 'Logical',
+                  operator: '&&',
+                  left: $$[$0-2],
+                  right: $$[$0]
+          };
+      
+break;
+case 20:
 this.$ = {
                   type: 'Binary',
                   operator: '^',
@@ -1614,7 +2058,7 @@ this.$ = {
             };
           
 break;
-case 18:
+case 21:
 this.$ = {
                   type: 'Binary',
                   operator: '^',
@@ -1626,7 +2070,7 @@ this.$ = {
             };
           
 break;
-case 19:
+case 22:
 this.$ = {
                  type: 'Binary',
                  operator: '^',
@@ -1635,7 +2079,7 @@ this.$ = {
            };
          
 break;
-case 20:
+case 23:
 this.$ = {
                 type: 'Binary',
                 operator: '+',
@@ -1644,7 +2088,7 @@ this.$ = {
           };
         
 break;
-case 21:
+case 24:
 this.$ = {
                  type: 'Binary',
                  operator: '-',
@@ -1653,7 +2097,7 @@ this.$ = {
            };
          
 break;
-case 22:
+case 25:
 this.$ = {
                  type: 'Binary',
                  operator: '*',
@@ -1662,7 +2106,7 @@ this.$ = {
            };
          
 break;
-case 23:
+case 26:
 this.$ = {
                type: 'Binary',
                operator: '/',
@@ -1671,7 +2115,7 @@ this.$ = {
          };
        
 break;
-case 24:
+case 27:
 this.$ = {
                   type: 'Unary',
                   operator: '-',
@@ -1679,7 +2123,7 @@ this.$ = {
             };
           
 break;
-case 25:
+case 28:
 this.$ = {
                   type: 'Unary',
                   operator: '+',
@@ -1687,7 +2131,7 @@ this.$ = {
             };
           
 break;
-case 26:
+case 29:
 this.$ = {
                 type: 'Unary',
                 operator: 'NOT',
@@ -1695,47 +2139,47 @@ this.$ = {
           };
         
 break;
-case 27:
+case 30:
 this.$ = $$[$0-1];
 break;
-case 28:
+case 31:
 this.$ = {
                   type: 'Number',
                   value: $$[$0]
               };
            
 break;
-case 29:
+case 32:
 this.$ = {
               type: 'Number',
               value: "3.14159265359"
           };
        
 break;
-case 30:
+case 33:
 this.$ = {
               type: 'Blank',
           };
        
 break;
-case 31:
+case 34:
 this.$ = {
-                type: 'True',
-                value: $$[$0]
+                type: 'Boolean',
+                value: 'true'
             };
          
 break;
-case 32:
+case 35:
 this.$ = {
-                type: 'False',
-                value: $$[$0]
+                type: 'Boolean',
+                value: 'false'
             };
          
 break;
 }
 },
-table: [{3:1,4:2,6:3,7:$V0,10:$V1,15:$V2},{1:[3]},{5:[1,7],6:8,7:$V0,10:$V1,15:$V2},o($V3,[2,2]),{8:[1,9]},{7:$V4,9:11,11:10,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},o($V3,[2,7]),{1:[2,1]},o($V3,[2,3]),{7:$V4,9:23,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{12:[1,24]},{12:[2,8],19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp},o($Vq,[2,11]),{7:$V4,9:37,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:38,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:39,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:40,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},o($Vq,[2,28]),o($Vq,[2,29]),o($Vq,[2,30]),o($Vq,[2,31]),o($Vq,[2,32]),o($Vq,[2,9],{17:[1,41]}),o($V3,[2,4],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp}),{4:42,6:3,7:$V0,10:$V1,15:$V2},{7:$V4,9:43,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:44,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:45,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:46,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:47,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},o($Vq,[2,17]),o($Vq,[2,18]),{7:$V4,9:48,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:49,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:50,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:51,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{7:$V4,9:52,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},o($Vr,[2,24],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,29:$Vo,30:$Vp}),o($Vr,[2,25],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,29:$Vo,30:$Vp}),o($Vs,[2,26],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi}),{18:[1,53],19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp},{7:$V4,9:54,16:12,17:$V5,27:$V6,28:$V7,31:$V8,32:$V9,33:$Va,34:$Vb,35:$Vc,36:$Vd},{6:8,7:$V0,10:$V1,13:[1,55],14:[1,56],15:$V2},o([5,7,10,12,13,14,15,18,19,24,25,26,27,28,29,30],[2,12],{20:$Vf,21:$Vg,22:$Vh,23:$Vi}),o($Vq,[2,13]),o([5,7,10,12,13,14,15,18,19,21,22,23,24,25,26,27,28,29,30],[2,14],{20:$Vf}),o([5,7,10,12,13,14,15,18,19,22,23,24,25,26,27,28,29,30],[2,15],{20:$Vf,21:$Vg}),o([5,7,10,12,13,14,15,18,19,23,24,25,26,27,28,29,30],[2,16],{20:$Vf,21:$Vg,22:$Vh}),o($Vs,[2,19],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi}),o($Vr,[2,20],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,29:$Vo,30:$Vp}),o($Vr,[2,21],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,29:$Vo,30:$Vp}),o($Vt,[2,22],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl}),o($Vt,[2,23],{19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl}),o($Vq,[2,27]),{18:[1,57],19:$Ve,20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp},o($V3,[2,5]),{4:58,6:3,7:$V0,10:$V1,15:$V2},o($Vq,[2,10]),{6:8,7:$V0,10:$V1,13:[1,59],15:$V2},o($V3,[2,6])],
-defaultActions: {7:[2,1]},
+table: [{3:1,4:2,6:3,7:$V0,10:$V1,15:$V2,16:$V3},{1:[3]},{5:[1,8],6:9,7:$V0,10:$V1,15:$V2,16:$V3},o($V4,[2,2]),{8:[1,10]},{7:$V5,9:12,11:11,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},o($V4,[2,7]),o($V4,[2,8]),{1:[2,1]},o($V4,[2,3]),{7:$V5,9:24,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{12:[1,25]},{12:[2,9],20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp,31:$Vq,32:$Vr,33:$Vs},o($Vt,[2,12]),{7:$V5,9:40,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:41,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:42,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:43,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},o($Vt,[2,31]),o($Vt,[2,32]),o($Vt,[2,33]),o($Vt,[2,34]),o($Vt,[2,35]),o($Vt,[2,10],{18:[1,44]}),o($V4,[2,4],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp,31:$Vq,32:$Vr,33:$Vs}),{4:45,6:3,7:$V0,10:$V1,15:$V2,16:$V3},{7:$V5,9:46,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:47,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:48,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:49,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:50,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:51,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:52,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},o($Vt,[2,20]),o($Vt,[2,21]),{7:$V5,9:53,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:54,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:55,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:56,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{7:$V5,9:57,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},o($Vu,[2,27],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,32:$Vr,33:$Vs}),o($Vu,[2,28],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,32:$Vr,33:$Vs}),o($Vv,[2,29],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj}),{19:[1,58],20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp,31:$Vq,32:$Vr,33:$Vs},{7:$V5,9:59,16:$V6,17:13,18:$V7,30:$V8,31:$V9,34:$Va,35:$Vb,36:$Vc,37:$Vd,38:$Ve},{6:9,7:$V0,10:$V1,13:[1,60],14:[1,61],15:$V2,16:$V3},o([5,7,10,12,13,14,15,16,19,20,25,26,27,28,29,30,31,32,33],[2,13],{21:$Vg,22:$Vh,23:$Vi,24:$Vj}),o($Vt,[2,14]),o([5,7,10,12,13,14,15,16,19,20,22,23,24,25,26,27,28,29,30,31,32,33],[2,15],{21:$Vg}),o([5,7,10,12,13,14,15,16,19,20,23,24,25,26,27,28,29,30,31,32,33],[2,16],{21:$Vg,22:$Vh}),o([5,7,10,12,13,14,15,16,19,20,24,25,26,27,28,29,30,31,32,33],[2,17],{21:$Vg,22:$Vh,23:$Vi}),o($Vv,[2,18],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj}),o($Vv,[2,19],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj}),o([5,7,10,12,13,14,15,16,19,27,28,29,30,31,32,33],[2,22],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl}),o($Vu,[2,23],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,32:$Vr,33:$Vs}),o($Vu,[2,24],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,32:$Vr,33:$Vs}),o($Vw,[2,25],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo}),o($Vw,[2,26],{20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo}),o($Vt,[2,30]),{19:[1,62],20:$Vf,21:$Vg,22:$Vh,23:$Vi,24:$Vj,25:$Vk,26:$Vl,27:$Vm,28:$Vn,29:$Vo,30:$Vp,31:$Vq,32:$Vr,33:$Vs},o($V4,[2,5]),{4:63,6:3,7:$V0,10:$V1,15:$V2,16:$V3},o($Vt,[2,11]),{6:9,7:$V0,10:$V1,13:[1,64],15:$V2,16:$V3},o($V4,[2,6])],
+defaultActions: {8:[2,1]},
 parseError: function parseError(str, hash) {
     if (hash.recoverable) {
         this.trace(str);
@@ -2222,76 +2666,84 @@ case 4:/* C-style comment */
 break;
 case 5:/* Python style comment */
 break;
-case 6:return 17
+case 6:return 18
 break;
-case 7:return 18
+case 7:return 19
 break;
-case 8:return 33
+case 8:return 36
 break;
-case 9:return 33
+case 9:return 36
 break;
-case 10:return 19
+case 10:return 20
 break;
-case 11:return 21
+case 11:return 22
 break;
-case 12:return 23
+case 12:return 24
 break;
-case 13:return 20
+case 13:return 21
 break;
-case 14:return 22
+case 14:return 23
 break;
-case 15:return 31
+case 15:return 25
 break;
-case 16:return 36
+case 16:return 25
 break;
-case 17:return 35
+case 17:return 26
 break;
-case 18:return 8
+case 18:return 26
 break;
-case 19:return 8
+case 19:return 34
 break;
-case 20:return 32
+case 20:return 38
 break;
-case 21:return 32
+case 21:return 37
 break;
-case 22:return 32
+case 22:return 8
 break;
-case 23:return 24
+case 23:return 8
 break;
-case 24:return 25
+case 24:return 35
 break;
-case 25:return 26
+case 25:return 35
 break;
-case 26:return 27
+case 26:return 35
 break;
-case 27:return 28
+case 27:return 27
 break;
-case 28:return 29
+case 28:return 28
 break;
-case 29:return 30
+case 29:return 29
 break;
-case 30:return 13
+case 30:return 30
 break;
-case 31:return 10
+case 31:return 31
 break;
-case 32:return 12
+case 32:return 32
 break;
-case 33:return 15
+case 33:return 33
 break;
-case 34:return 14
+case 34:return 13
 break;
-case 35:return 34
+case 35:return 10
 break;
-case 36:return 34
+case 36:return 12
 break;
-case 37:return 7
+case 37:return 15
 break;
-case 38:return 5
+case 38:return 14
+break;
+case 39:return 16
+break;
+case 40:return 16
+break;
+case 41:return 7
+break;
+case 42:return 5
 break;
 }
 },
-rules: [/^(?:\s+)/i,/^(?:\t+)/i,/^(?:'[^\n]*)/i,/^(?:\/\*(.|\n|\r)*?\*\/)/i,/^(?:\/\/[^\n]*)/i,/^(?:#[^\n]*)/i,/^(?:\()/i,/^(?:\))/i,/^(?:pi\b)/i,/^(?:π)/i,/^(?:==)/i,/^(?:>=)/i,/^(?:<=)/i,/^(?:>)/i,/^(?:<)/i,/^(?:!|niet\b)/i,/^(?:onwaar\b)/i,/^(?:waar\b)/i,/^(?:=)/i,/^(?::=)/i,/^(?:[0-9]*["."","][0-9]+([Ee][+-]?[0-9]+)?)/i,/^(?:[0-9]+["."","][0-9]*([Ee][+-]?[0-9]+)?)/i,/^(?:[0-9]+([Ee][+-]?[0-9]+)?)/i,/^(?:²)/i,/^(?:³)/i,/^(?:\^)/i,/^(?:\+)/i,/^(?:-)/i,/^(?:\*)/i,/^(?:\/)/i,/^(?:eindals\b)/i,/^(?:als\b)/i,/^(?:dan\b)/i,/^(?:stop\b)/i,/^(?:anders\b)/i,/^(?:\.\.\.)/i,/^(?:…)/i,/^(?:[a-zA-Z\x7f-\uffff][a-zA-Z\x7f-\u00b1\u00b4-\uffff0-9_"\]""\|"{}"["]*)/i,/^(?:$)/i],
-conditions: {"INITIAL":{"rules":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38],"inclusive":true}}
+rules: [/^(?:\s+)/i,/^(?:\t+)/i,/^(?:'[^\n]*)/i,/^(?:\/\*(.|\n|\r)*?\*\/)/i,/^(?:\/\/[^\n]*)/i,/^(?:#[^\n]*)/i,/^(?:\()/i,/^(?:\))/i,/^(?:pi\b)/i,/^(?:π)/i,/^(?:==)/i,/^(?:>=)/i,/^(?:<=)/i,/^(?:>)/i,/^(?:<)/i,/^(?:of\b)/i,/^(?:\|\|)/i,/^(?:en\b)/i,/^(?:&&)/i,/^(?:!|niet\b)/i,/^(?:onwaar\b)/i,/^(?:waar\b)/i,/^(?:=)/i,/^(?::=)/i,/^(?:[0-9]*["."","][0-9]+([Ee][+-]?[0-9]+)?)/i,/^(?:[0-9]+["."","][0-9]*([Ee][+-]?[0-9]+)?)/i,/^(?:[0-9]+([Ee][+-]?[0-9]+)?)/i,/^(?:²)/i,/^(?:³)/i,/^(?:\^)/i,/^(?:\+)/i,/^(?:-)/i,/^(?:\*)/i,/^(?:\/)/i,/^(?:eindals\b)/i,/^(?:als\b)/i,/^(?:dan\b)/i,/^(?:stop\b)/i,/^(?:anders\b)/i,/^(?:\.\.\.)/i,/^(?:…)/i,/^(?:[a-zA-Z\x7f-\uffff][a-zA-Z\x7f-\u00b1\u00b4-\uffff0-9_"\]""\|"{}"["]*)/i,/^(?:$)/i],
+conditions: {"INITIAL":{"rules":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42],"inclusive":true}}
 });
 return lexer;
 })();

@@ -18,10 +18,9 @@ def parse_line(line):
 
     """
     return re.findall("[\"|'](.[^'|\"]*)[\"|']", line)
+
 assert parse_line('{title: "Bungeejumper", url: "modellen/Bungeejumper.xml"},\n') == \
                   ["Bungeejumper", "modellen/Bungeejumper.xml"]
-#assert parse_line("{title: 'Bungeejumper', url: 'modellen/Bungeejumper.xml'},\n") == \
-#                  ["Bungeejumper", "modellen/Bungeejumper.xml"]
 
 
 def maak_eerste_letter_hoofdletter(s):
