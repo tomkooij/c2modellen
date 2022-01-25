@@ -1,4 +1,5 @@
 <modelleertaal>
+N=10
 <modelregels>
 'Constante snelheidsmodel
 dx = v * dt

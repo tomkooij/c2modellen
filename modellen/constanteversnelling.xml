@@ -1,4 +1,5 @@
 <modelleertaal>
+N=10
 <modelregels>
 'Constante versnellingsmodel
 dv = a * dt
